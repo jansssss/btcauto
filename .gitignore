@@ -1,0 +1,10 @@
+.env
+state/
+logs/
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+key.txt
+.claude/

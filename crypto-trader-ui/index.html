@@ -1,0 +1,1129 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>업비트 매도봇</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+  <script src="https://s3.tradingview.com/tv.js"></script>
+  <script>const API = 'http://localhost:5000/api';</script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg0:#0d0d0d; --bg1:#161616; --bg2:#1f1f1f; --bg3:#2a2a2a;
+      --border:#2e2e2e; --text:#e8e8e8; --text2:#888; --text3:#555;
+      --green:#05c46b; --gdim:#05c46b18; --red:#ff5e57; --rdim:#ff5e5718;
+      --blue:#4fc3f7; --yellow:#ffca28;
+      --mono:'JetBrains Mono','Courier New',monospace;
+      --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    }
+    html,body { height:100%; background:var(--bg0); color:var(--text); font-family:var(--sans); font-size:13px; overflow:hidden; }
+    button { cursor:pointer; border:none; font-family:var(--sans); }
+    input,select { font-family:var(--mono); font-size:13px; }
+    ::-webkit-scrollbar { width:4px; }
+    ::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+
+    /* ── App Shell ───────────────────────── */
+    #app { display:grid; grid-template-rows:50px 1fr 180px; height:100vh; }
+
+    /* ── Header ─────────────────────────── */
+    header {
+      display:flex; align-items:center; gap:10px; padding:0 16px;
+      border-bottom:1px solid var(--border); background:var(--bg1); flex-shrink:0;
+    }
+    .logo { font-size:14px; font-weight:700; color:var(--blue); white-space:nowrap; }
+    .badge {
+      padding:2px 8px; border-radius:3px; font-size:10px; font-weight:700; letter-spacing:.8px;
+    }
+    .badge.sim  { background:#ffca2815; color:var(--yellow); border:1px solid #ffca2830; }
+    .badge.real { background:#ff5e5715; color:var(--red);    border:1px solid #ff5e5730; }
+    .badge.tf   { background:#4fc3f715; color:var(--blue);   border:1px solid #4fc3f730; }
+    .conn-wrap  { display:flex; align-items:center; gap:5px; }
+    .dot { width:6px; height:6px; border-radius:50%; background:var(--text3); flex-shrink:0; }
+    .dot.live { background:var(--green); box-shadow:0 0 5px var(--green); }
+    .dot.ok   { background:var(--green); }
+    .dot.err  { background:var(--red); }
+    .dot-lbl  { font-size:10px; color:var(--text2); }
+    .coin-tabs { display:flex; gap:2px; margin-left:4px; }
+    .ctab {
+      padding:4px 12px; border-radius:4px; background:transparent;
+      color:var(--text2); font-size:12px; font-weight:600; transition:all .15s;
+    }
+    .ctab:hover { background:var(--bg2); color:var(--text); }
+    .ctab.on { background:var(--bg3); color:var(--blue); }
+    .spacer { flex:1; }
+    /* 실거래 토글 */
+    .rt-wrap { display:flex; align-items:center; gap:7px; }
+    .rt-wrap label { font-size:11px; cursor:pointer; }
+    .sw { position:relative; width:34px; height:18px; }
+    .sw input { opacity:0; width:0; height:0; }
+    .sw-track {
+      position:absolute; inset:0; background:var(--bg3); border-radius:20px;
+      cursor:pointer; transition:.2s; border:1px solid var(--border);
+    }
+    .sw-track:before {
+      content:''; position:absolute; width:12px; height:12px; border-radius:50%;
+      background:var(--text3); bottom:2px; left:2px; transition:.2s;
+    }
+    .sw input:checked + .sw-track { background:#ff5e5720; border-color:#ff5e5755; }
+    .sw input:checked + .sw-track:before { background:var(--red); transform:translateX(16px); }
+    /* 매도봇 상태 */
+    .bot-tag { padding:3px 10px; border-radius:12px; font-size:11px; font-weight:700; background:var(--bg3); color:var(--text3); }
+    .bot-tag.on { background:var(--rdim); color:var(--red); border:1px solid #ff5e5730; }
+
+    /* ── Main ────────────────────────────── */
+    main { display:grid; grid-template-columns:240px 1fr 252px; overflow:hidden; min-height:0; }
+
+    /* ── Left Panel ──────────────────────── */
+    #left-panel { border-right:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; }
+    .ptitle { font-size:10px; font-weight:700; letter-spacing:1.4px; color:var(--text3); padding:11px 13px 6px; text-transform:uppercase; }
+    .price-hero { padding:4px 13px 12px; }
+    .p-sym { font-size:10px; color:var(--text2); font-weight:600; letter-spacing:.8px; margin-bottom:3px; }
+    .p-val { font-family:var(--mono); font-size:34px; font-weight:700; line-height:1; letter-spacing:-1px; transition:color .25s; }
+    .p-chg { display:inline-block; margin-top:5px; padding:2px 8px; border-radius:3px; font-size:12px; font-weight:700; font-family:var(--mono); }
+    .p-chg.up { background:var(--gdim); color:var(--green); }
+    .p-chg.dn { background:var(--rdim); color:var(--red); }
+    .meta-grid { display:grid; grid-template-columns:1fr 1fr; gap:1px; margin:0 10px; background:var(--border); border-radius:5px; overflow:hidden; }
+    .mi { background:var(--bg1); padding:7px 10px; }
+    .mi-l { font-size:9px; color:var(--text3); margin-bottom:2px; }
+    .mi-v { font-family:var(--mono); font-size:11px; font-weight:600; }
+    .mi-v.up { color:var(--green); } .mi-v.dn { color:var(--red); }
+    .hdiv { border:none; border-top:1px solid var(--border); margin:8px 0; }
+    /* Orderbook */
+    .ob-wrap { flex:1; overflow-y:auto; margin:0 10px 8px; }
+    .ob-row { display:flex; align-items:center; padding:3px 8px; gap:6px; font-family:var(--mono); font-size:10px; position:relative; border-radius:2px; }
+    .ob-bar { position:absolute; top:0; bottom:0; left:0; opacity:.1; pointer-events:none; border-radius:2px; }
+    .ob-row.ask .ob-bar { background:var(--red); } .ob-row.bid .ob-bar { background:var(--green); }
+    .ob-p { width:80px; font-weight:600; }
+    .ob-p.ask { color:var(--red); } .ob-p.bid { color:var(--green); }
+    .ob-q { color:var(--text2); flex:1; text-align:right; }
+    .ob-mid { text-align:center; font-size:9px; color:var(--text3); padding:3px; background:var(--bg2); border-radius:2px; margin:1px 0; }
+
+    /* ── Middle: TradingView ─────────────── */
+    #tv-panel { display:flex; flex-direction:column; border-right:1px solid var(--border); min-height:0; }
+    #tv-chart  { flex:1; min-height:0; }
+    /* 지표 바 */
+    .ind-bar {
+      display:flex; gap:0; border-top:1px solid var(--border); background:var(--bg1);
+      flex-shrink:0;
+    }
+    .ind-item { padding:7px 14px; border-right:1px solid var(--border); display:flex; flex-direction:column; gap:1px; }
+    .ind-item:last-child { border-right:none; }
+    .ind-lbl { font-size:9px; color:var(--text3); text-transform:uppercase; letter-spacing:.8px; }
+    .ind-val { font-family:var(--mono); font-size:12px; font-weight:600; }
+    .ind-val.up { color:var(--green); } .ind-val.dn { color:var(--red); }
+    .ind-val.warn { color:var(--yellow); }
+
+    /* ── Right Panel ─────────────────────── */
+    #right-panel { display:flex; flex-direction:column; overflow:hidden; background:var(--bg1); }
+
+    /* 수동 매수 섹션 */
+    .buy-section { padding:8px 13px; border-bottom:1px solid var(--border); }
+    .buy-price { font-family:var(--mono); font-size:18px; font-weight:700; color:var(--text); margin-bottom:7px; }
+    .buy-price small { font-size:11px; color:var(--text2); font-weight:400; margin-left:4px; }
+    .finput {
+      width:100%; background:var(--bg2); border:1px solid var(--border);
+      color:var(--text); padding:7px 9px; border-radius:4px; outline:none; transition:border-color .15s;
+    }
+    .finput:focus { border-color:var(--blue); }
+    .flbl { font-size:10px; color:var(--text3); margin-bottom:4px; display:block; text-transform:uppercase; letter-spacing:.4px; }
+    .fg { margin-bottom:7px; }
+    .buy-btn {
+      width:100%; padding:13px; border-radius:6px; margin-top:4px;
+      font-size:15px; font-weight:700; letter-spacing:.3px;
+      background:var(--green); color:#000; transition:all .2s;
+    }
+    .buy-btn:hover { filter:brightness(1.1); transform:translateY(-1px); }
+    .buy-btn:disabled { background:var(--bg3); color:var(--text3); transform:none; cursor:not-allowed; }
+    /* 포지션 있을 때 */
+    .manual-sell-btn {
+      width:100%; padding:10px; border-radius:6px; margin-top:6px;
+      font-size:13px; font-weight:700; background:var(--red); color:#fff; transition:all .2s;
+    }
+    .manual-sell-btn:hover { filter:brightness(1.1); }
+
+    /* 매도 설정 */
+    .sell-section { padding:10px 13px; border-bottom:1px solid var(--border); }
+    .frow2 { display:grid; grid-template-columns:1fr 1fr; gap:7px; }
+    .rule-box {
+      margin-top:8px; padding:8px 10px; border-radius:5px;
+      background:var(--bg2); border-left:2px solid var(--red); font-size:10px; color:var(--text2); line-height:1.7;
+    }
+    .rule-box strong { color:var(--text); }
+    /* 매도봇 토글 */
+    .sell-bot-btn {
+      width:100%; padding:9px 12px; border-radius:6px; margin-top:8px;
+      font-size:12px; font-weight:600; transition:all .25s;
+      background:var(--bg3); color:var(--text2); border:1px solid var(--border);
+      display:flex; align-items:center; justify-content:space-between; cursor:pointer;
+    }
+    .sell-bot-btn .sbb-state { display:flex; align-items:center; gap:6px; font-size:11px; }
+    .sell-bot-btn .sbb-dot { width:7px; height:7px; border-radius:50%; background:var(--text3); flex-shrink:0; }
+    .sell-bot-btn .sbb-action { font-size:11px; opacity:.7; }
+    /* ON 상태: 초록 테두리 + 점 애니 */
+    .sell-bot-btn.on { background:#1a2e1a; color:var(--green); border-color:#4caf5060; }
+    .sell-bot-btn.on .sbb-dot { background:var(--green); box-shadow:0 0 0 0 #4caf5066;
+      animation:botpulse 1.4s ease-in-out infinite; }
+    .sell-bot-btn.on .sbb-action { opacity:.8; color:var(--red); }
+    @keyframes botpulse {
+      0%   { box-shadow:0 0 0 0 #4caf5066; }
+      60%  { box-shadow:0 0 0 5px #4caf5000; }
+      100% { box-shadow:0 0 0 0 #4caf5000; }
+    }
+
+    /* 포트폴리오 */
+    .pf-section { padding:10px 13px; flex:1; display:flex; flex-direction:column; overflow:hidden; min-height:0; }
+    .pf { border-radius:6px; overflow-y:auto; background:var(--bg2); flex:1; min-height:0; }
+    .trail-bar-wrap { flex-shrink:0; }
+    .pf-row { display:flex; justify-content:space-between; align-items:center; padding:7px 10px; border-bottom:1px solid var(--border); }
+    .pf-row:last-child { border-bottom:none; }
+    .pf-l { font-size:11px; color:var(--text2); }
+    .pf-v { font-family:var(--mono); font-size:12px; font-weight:600; }
+    .pf-v.up { color:var(--green); } .pf-v.dn { color:var(--red); } .pf-v.warn { color:var(--yellow); }
+    /* 고점-스탑 시각화 바 */
+    .trail-bar-wrap { padding:8px 13px; }
+    .trail-bar-bg { height:7px; background:var(--bg3); border-radius:3px; position:relative; overflow:hidden; }
+    .trail-bar-fill { height:100%; border-radius:3px; background:linear-gradient(90deg, #ff4444, #ff9900 40%, #44cc44); transition:width .5s; }
+    .trail-labels { display:flex; justify-content:space-between; margin-top:4px; font-size:9px; color:var(--text3); font-family:var(--mono); }
+
+    /* ── Bottom: Log ─────────────────────── */
+    #log-panel { border-top:1px solid var(--border); background:var(--bg1); display:flex; flex-direction:column; min-height:0; }
+    .log-head { display:flex; align-items:center; padding:6px 14px; border-bottom:1px solid var(--border); flex-shrink:0; }
+    .log-head .ptitle { padding:0; }
+    .log-clr { margin-left:auto; background:transparent; color:var(--text3); font-size:11px; padding:2px 7px; border-radius:3px; border:1px solid var(--border); }
+    .log-clr:hover { color:var(--text); }
+    .log-body { flex:1; overflow-y:auto; min-height:0; }
+    .log-ph { text-align:center; color:var(--text3); font-size:11px; padding:12px; }
+    .log-row {
+      display:grid; grid-template-columns:76px 48px 58px 115px 100px 95px 1fr;
+      gap:8px; padding:4px 14px; font-family:var(--mono); font-size:11px; align-items:center;
+    }
+    .log-row:hover { background:var(--bg2); }
+    .log-time { color:var(--text3); }
+    .log-side { font-weight:700; text-align:center; padding:1px 4px; border-radius:2px; font-size:10px; }
+    .log-side.B { background:var(--gdim); color:var(--green); }
+    .log-side.S { background:var(--rdim); color:var(--red); }
+    .log-coin,.log-qty { color:var(--text2); }
+    .log-price { color:var(--text); }
+    .log-pnl.p { color:var(--green); } .log-pnl.l { color:var(--red); } .log-pnl.n { color:var(--text3); }
+    .log-note { color:var(--text3); font-size:10px; }
+
+    /* 토스트 */
+    .toast {
+      position:fixed; bottom:20px; right:20px; z-index:9999;
+      background:var(--bg2); padding:11px 16px; border-radius:6px;
+      font-size:12px; max-width:300px; white-space:pre-line;
+      box-shadow:0 4px 20px #00000099; animation:fadeIn .2s;
+    }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+
+    /* 지정가 예약 - 돌파/눌림 2행 */
+    .lmt-row { margin-top:5px; }
+    .lmt-input-row { display:grid; grid-template-columns:1fr auto; gap:5px; }
+    .lmt-up-btn { padding:0 8px; border-radius:5px; font-size:11px; font-weight:700;
+      background:#05c46b15; color:var(--green); border:1px solid #05c46b35; white-space:nowrap; }
+    .lmt-dn-btn { padding:0 8px; border-radius:5px; font-size:11px; font-weight:700;
+      background:#ff5e5715; color:var(--red); border:1px solid #ff5e5735; white-space:nowrap; }
+    .lmt-up-btn:hover { background:#05c46b28; }
+    .lmt-dn-btn:hover { background:#ff5e5728; }
+    .lmt-wait-row { display:flex; align-items:center; gap:6px; padding:5px 9px; border-radius:5px; }
+    .lmt-wait-row.up { background:#05c46b0d; border:1px solid #05c46b30; }
+    .lmt-wait-row.dn { background:#ff5e570d; border:1px solid #ff5e5730; }
+    .lmt-wait-lbl { font-size:11px; font-family:var(--mono); font-weight:600; flex:1; }
+    .lmt-wait-row.up .lmt-wait-lbl { color:var(--green); }
+    .lmt-wait-row.dn .lmt-wait-lbl { color:var(--red); }
+    .lmt-cancel { background:transparent; font-size:10px; border:1px solid var(--border);
+      border-radius:3px; padding:2px 6px; color:var(--text3); }
+    .lmt-cancel:hover { color:var(--red); border-color:#ff5e5760; }
+    .limit-cancel:hover { background:var(--rdim); }
+
+    /* 로딩 스피너 */
+    .spin { display:inline-block; width:12px; height:12px; border:2px solid var(--border); border-top-color:var(--blue); border-radius:50%; animation:spin .6s linear infinite; }
+    @keyframes spin { to{transform:rotate(360deg)} }
+
+    /* ── 로그인 오버레이 ─────────────────────── */
+    #login-overlay {
+      position:fixed; inset:0; z-index:9999;
+      background:var(--bg0);
+      display:flex; align-items:center; justify-content:center;
+    }
+    .login-box {
+      width:320px; padding:36px 32px;
+      background:var(--bg1); border:1px solid var(--border);
+      border-radius:12px; box-shadow:0 20px 60px #00000088;
+    }
+    .login-logo { font-size:18px; font-weight:700; color:var(--blue); margin-bottom:4px; }
+    .login-sub  { font-size:11px; color:var(--text3); margin-bottom:28px; }
+    .login-label { font-size:10px; color:var(--text3); letter-spacing:.8px; text-transform:uppercase; margin-bottom:6px; }
+    .login-input {
+      width:100%; background:var(--bg2); border:1px solid var(--border);
+      color:var(--text); padding:11px 13px; border-radius:6px;
+      font-family:var(--mono); font-size:15px; letter-spacing:3px;
+      outline:none; transition:border-color .2s;
+    }
+    .login-input:focus { border-color:var(--blue); }
+    .login-input.shake { animation:shake .35s; border-color:var(--red); }
+    .login-btn {
+      width:100%; margin-top:12px; padding:12px;
+      background:var(--blue); color:#000; font-size:14px; font-weight:700;
+      border-radius:6px; transition:filter .2s;
+    }
+    .login-btn:hover { filter:brightness(1.1); }
+    .login-err { font-size:11px; color:var(--red); margin-top:8px; min-height:16px; text-align:center; }
+    @keyframes shake {
+      0%,100%{ transform:translateX(0); }
+      20%    { transform:translateX(-8px); }
+      40%    { transform:translateX(8px); }
+      60%    { transform:translateX(-5px); }
+      80%    { transform:translateX(5px); }
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ── Header ── -->
+  <header>
+    <div class="logo">업비트 매도봇</div>
+    <span class="badge tf">5분봉</span>
+    <span class="badge sim" id="modeBadge">모의</span>
+    <div class="conn-wrap">
+      <div class="dot" id="connDot"></div>
+      <span class="dot-lbl" id="connLbl">연결 중...</span>
+    </div>
+    <div class="conn-wrap" style="margin-left:4px;">
+      <div class="dot" id="serverDot"></div>
+      <span class="dot-lbl" id="serverLbl">서버 없음</span>
+    </div>
+    <div class="coin-tabs">
+      <button class="ctab on"  onclick="selectCoin('KRW-BTC','비트코인',this)">BTC</button>
+      <button class="ctab" onclick="selectCoin('KRW-ETH','이더리움',this)">ETH</button>
+      <button class="ctab" onclick="selectCoin('KRW-XRP','리플',this)">XRP</button>
+      <button class="ctab" onclick="selectCoin('KRW-SOL','솔라나',this)">SOL</button>
+      <button class="ctab" onclick="selectCoin('KRW-DOGE','도지코인',this)">DOGE</button>
+    </div>
+    <div class="spacer"></div>
+    <!-- 실거래 토글 -->
+    <div class="rt-wrap">
+      <label for="realToggle" style="color:var(--text3);">모의</label>
+      <label class="sw">
+        <input type="checkbox" id="realToggle" onchange="toggleRealMode(this.checked)">
+        <span class="sw-track"></span>
+      </label>
+      <label for="realToggle" style="color:var(--red);font-weight:700;">실거래</label>
+    </div>
+    <div class="bot-tag" id="botTag">매도봇 OFF</div>
+  </header>
+
+  <!-- ── Main ── -->
+  <main>
+
+    <!-- 좌: 시세 + 호가 -->
+    <div id="left-panel">
+      <div class="ptitle">실시간 시세</div>
+      <div class="price-hero">
+        <div class="p-sym" id="pSym">KRW-BTC · 비트코인</div>
+        <div class="p-val" id="pVal">—</div>
+        <span class="p-chg" id="pChg">—</span>
+      </div>
+      <div class="meta-grid">
+        <div class="mi"><div class="mi-l">고가(일)</div><div class="mi-v up" id="mHi">—</div></div>
+        <div class="mi"><div class="mi-l">저가(일)</div><div class="mi-v dn" id="mLo">—</div></div>
+        <div class="mi"><div class="mi-l">거래량</div><div class="mi-v" id="mVol">—</div></div>
+        <div class="mi"><div class="mi-l">거래대금</div><div class="mi-v" id="mQV">—</div></div>
+      </div>
+      <div class="hdiv"></div>
+      <div class="ptitle">호가창</div>
+      <div class="ob-wrap" id="ob"></div>
+    </div>
+
+    <!-- 중: 트레이딩뷰 차트 -->
+    <div id="tv-panel">
+      <div id="tv-chart"></div>
+      <!-- 지표 바 -->
+      <div class="ind-bar">
+        <div class="ind-item"><div class="ind-lbl">현재가</div><div class="ind-val" id="iCur">—</div></div>
+        <div class="ind-item"><div class="ind-lbl">RSI(14)</div><div class="ind-val" id="iRsi">—</div></div>
+        <div class="ind-item"><div class="ind-lbl">MA(20)</div><div class="ind-val" id="iMa20">—</div></div>
+        <div class="ind-item"><div class="ind-lbl">MA(60)</div><div class="ind-val" id="iMa60">—</div></div>
+        <div class="ind-item"><div class="ind-lbl">포지션 고점</div><div class="ind-val up" id="iPeak">—</div></div>
+        <div class="ind-item"><div class="ind-lbl">트레일링 스탑</div><div class="ind-val warn" id="iStop">—</div></div>
+      </div>
+    </div>
+
+    <!-- 우: 매수 + 매도설정 + 포트폴리오 -->
+    <div id="right-panel">
+
+      <!-- 수동 매수 -->
+      <div class="buy-section">
+        <div class="buy-price" id="buyPriceDisplay">— <small>현재가</small></div>
+        <div id="buyAmtGroup">
+          <div class="fg" style="margin-bottom:5px;">
+            <label class="flbl">매수 금액 (KRW)</label>
+            <input class="finput" type="number" id="buyAmt" value="30000" min="5000" step="1000" />
+          </div>
+          <!-- 돌파 예약 행 -->
+          <div class="lmt-row">
+            <div class="lmt-input-row" id="lmtInputUp">
+              <input class="finput" type="number" id="limitPriceUp" placeholder="▲ 돌파 가격" step="1000" style="font-size:11px;padding:6px 8px;" />
+              <button class="lmt-up-btn" onclick="setLimitOrder('up')">▲ 예약</button>
+            </div>
+            <div class="lmt-wait-row up" id="lmtWaitUp" style="display:none;">
+              <span class="lmt-wait-lbl" id="lmtLabelUp">—</span>
+              <button class="lmt-cancel" onclick="cancelLimitOrder('up')">✕</button>
+            </div>
+          </div>
+          <!-- 눌림 예약 행 -->
+          <div class="lmt-row">
+            <div class="lmt-input-row" id="lmtInputDown">
+              <input class="finput" type="number" id="limitPriceDown" placeholder="▼ 눌림 가격" step="1000" style="font-size:11px;padding:6px 8px;" />
+              <button class="lmt-dn-btn" onclick="setLimitOrder('down')">▼ 예약</button>
+            </div>
+            <div class="lmt-wait-row dn" id="lmtWaitDown" style="display:none;">
+              <span class="lmt-wait-lbl" id="lmtLabelDown">—</span>
+              <button class="lmt-cancel" onclick="cancelLimitOrder('down')">✕</button>
+            </div>
+          </div>
+          <button class="buy-btn" id="buyBtn" onclick="executeBuy()" style="margin-top:6px;">시장가 매수</button>
+        </div>
+        <button class="manual-sell-btn" id="sellBtn" onclick="executeManualSell()" style="display:none">
+          전량 매도
+        </button>
+      </div>
+
+      <!-- 매도 설정 -->
+      <div class="sell-section">
+        <div class="ptitle" style="padding:0 0 8px;">매도 원칙 설정</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:7px;">
+          <div class="fg">
+            <label class="flbl">손절 (%)</label>
+            <input class="finput" type="number" id="stopLoss" value="3" min="0.5" step="0.5"
+              oninput="updateRuleBox()" title="진입가 대비 N% 하락 시 즉시 손절" />
+          </div>
+          <div class="fg">
+            <label class="flbl">활성화 (%)</label>
+            <input class="finput" type="number" id="trailingActivate" value="7" min="1" step="1"
+              oninput="updateRuleBox(); updatePortfolio();" title="수익이 +N% 달성 후 트레일링 시작" />
+          </div>
+          <div class="fg">
+            <label class="flbl">트레일링 (%)</label>
+            <input class="finput" type="number" id="trailingWidth" value="5" min="1" step="1"
+              oninput="updateRuleBox(); updatePortfolio();" title="활성화 후 고점 대비 N% 하락 시 매도" />
+          </div>
+        </div>
+        <div class="rule-box" id="ruleBox">
+          ① 진입가 -<b id="rSL">3</b>% → 즉시 손절<br>
+          ② 수익 +<b id="rTA">7</b>% 달성 전 → 트레일링 없음<br>
+          ③ +<b id="rTA2">7</b>% 달성 후 고점 -<b id="rTW">5</b>% → 매도<br>
+          <span style="color:var(--green);">→ 오르는 동안은 절대 팔지 않음</span>
+        </div>
+        <button class="sell-bot-btn" id="sellBotBtn" onclick="toggleSellBot()">
+          <span class="sbb-state"><span class="sbb-dot"></span><span id="sbbStatus">꺼짐</span></span>
+          <span class="sbb-action" id="sbbAction">▶ 자동화 시작</span>
+        </button>
+      </div>
+
+      <!-- 포트폴리오 -->
+      <div class="pf-section">
+        <div class="ptitle" style="padding:0 0 8px;">포트폴리오</div>
+        <div class="pf">
+          <div class="pf-row"><span class="pf-l">보유 KRW</span><span class="pf-v" id="pfKrw">₩10,000,000</span></div>
+          <div class="pf-row"><span class="pf-l">포지션</span><span class="pf-v" id="pfPos">없음</span></div>
+          <div class="pf-row"><span class="pf-l">진입가</span><span class="pf-v" id="pfEntry">—</span></div>
+          <div class="pf-row"><span class="pf-l">포지션 고점</span><span class="pf-v up" id="pfPeak">—</span></div>
+          <div class="pf-row"><span class="pf-l">트레일링 스탑가</span><span class="pf-v warn" id="pfStop">—</span></div>
+          <div class="pf-row"><span class="pf-l">평가손익</span><span class="pf-v" id="pfUnreal">—</span></div>
+          <div class="pf-row"><span class="pf-l">실현손익 / 수익률</span><span class="pf-v" id="pfStat">₩0 / 0.00%</span></div>
+        </div>
+        <!-- 매수가→손절 거리 바 -->
+        <div class="trail-bar-wrap" id="trailBarWrap" style="display:none">
+          <div style="font-size:9px;color:var(--text3);margin-bottom:4px;">손절까지 남은 거리</div>
+          <div class="trail-bar-bg">
+            <div class="trail-bar-fill" id="trailBarFill" style="width:100%"></div>
+          </div>
+          <div class="trail-labels">
+            <span id="trailBarStop">손절</span>
+            <span id="trailBarPct">—</span>
+            <span id="trailBarPeak">매수가</span>
+          </div>
+        </div>
+        <!-- 실계좌 불러오기 -->
+        <button onclick="syncRealBalance()" id="syncBtn"
+          style="width:100%;margin-top:8px;padding:7px;border-radius:4px;
+                 background:var(--bg2);border:1px solid var(--border);
+                 color:var(--text2);font-size:11px;display:none;">
+          실계좌 잔고 새로고침
+        </button>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- ── Log ── -->
+  <div id="log-panel">
+    <div class="log-head">
+      <div class="ptitle">체결 로그</div>
+      <button class="log-clr" onclick="clearLog()">지우기</button>
+    </div>
+    <div class="log-body" id="logBody" aria-live="polite">
+      <div class="log-ph">수동으로 매수하면 매도봇이 트레일링 스탑을 자동 감시합니다.</div>
+    </div>
+  </div>
+
+</div>
+<script>
+/* ════════════════════════════════════════
+   STATE
+════════════════════════════════════════ */
+const S = {
+  market: 'KRW-BTC', coinName: '비트코인',
+  cur: 0, prev: 0,
+  ws: null, ob: { asks:[], bids:[] },
+  sellBotOn: false,
+  isRealMode: false, serverOk: false,
+  orderPending: false,
+  // 포트폴리오
+  krw: 10_000_000, initKrw: 10_000_000,
+  position: null,      // { qty, entryPrice, entryKrw, highestPrice }
+  limitOrders: { up: null, down: null },  // 돌파/눌림 동시 예약
+  realPnl: 0, trades: 0,
+  // 5분봉 (지표 계산용)
+  candles: [], fetchTimer: null,
+};
+
+const TV_SYMBOLS = {
+  'KRW-BTC':  'UPBIT:BTCKRW',
+  'KRW-ETH':  'UPBIT:ETHKRW',
+  'KRW-XRP':  'UPBIT:XRPKRW',
+  'KRW-SOL':  'UPBIT:SOLKRW',
+  'KRW-DOGE': 'UPBIT:DOGEKRW',
+};
+
+/* ════════════════════════════════════════
+   FORMAT
+════════════════════════════════════════ */
+const W  = (n,d=0) => '₩'+Number(n).toLocaleString('ko-KR',{minimumFractionDigits:d,maximumFractionDigits:d});
+const fK = n => n>=1e12?(n/1e12).toFixed(2)+'조':n>=1e8?(n/1e8).toFixed(1)+'억':n>=1e4?(n/1e4).toFixed(0)+'만':String(Math.round(n));
+const fp = (n,d=2) => (n>=0?'+':'')+n.toFixed(d)+'%';
+
+/* ════════════════════════════════════════
+   TRADINGVIEW
+════════════════════════════════════════ */
+let tvWidget = null;
+function initTV(market) {
+  document.getElementById('tv-chart').innerHTML = '';
+  tvWidget = new TradingView.widget({
+    autosize:          true,
+    symbol:            TV_SYMBOLS[market] || 'UPBIT:BTCKRW',
+    interval:          '5',
+    timezone:          'Asia/Seoul',
+    theme:             'dark',
+    style:             '1',
+    locale:            'kr',
+    toolbar_bg:        '#161616',
+    enable_publishing: false,
+    hide_side_toolbar: true,
+    allow_symbol_change: false,
+    withdateranges:    true,
+    studies:           ['RSI@tv-basicstudies', 'BB@tv-basicstudies'],
+    container_id:      'tv-chart',
+    loading_screen:    { backgroundColor:'#0d0d0d', foregroundColor:'#2a2a2a' },
+    overrides: {
+      'paneProperties.background':           '#0d0d0d',
+      'paneProperties.backgroundType':       'solid',
+      'paneProperties.vertGridProperties.color': '#1a1a1a',
+      'paneProperties.horzGridProperties.color': '#1a1a1a',
+      'scalesProperties.textColor':          '#555555',
+      'candleStyle.upColor':                 '#05c46b',
+      'candleStyle.downColor':               '#ff5e57',
+      'candleStyle.wickUpColor':             '#05c46b',
+      'candleStyle.wickDownColor':           '#ff5e57',
+      'candleStyle.borderUpColor':           '#05c46b',
+      'candleStyle.borderDownColor':         '#ff5e57',
+    },
+  });
+}
+
+/* ════════════════════════════════════════
+   UPBIT WEBSOCKET
+════════════════════════════════════════ */
+function connect(market) {
+  if (S.ws) { try { S.ws.close(); } catch(e){} }
+  const ws = new WebSocket('wss://api.upbit.com/websocket/v1');
+  S.ws = ws;
+  ws.onopen = () => {
+    ws.send(JSON.stringify([
+      { ticket: 'sellbot-'+Date.now() },
+      { type: 'ticker',    codes: [market], isOnlyRealtime: true },
+      { type: 'orderbook', codes: [market], isOnlyRealtime: true },
+    ]));
+    setConn(true);
+  };
+  ws.onclose  = () => { setConn(false); setTimeout(() => connect(S.market), 3000); };
+  ws.onerror  = () => ws.close();
+  ws.onmessage = async (e) => {
+    const t = new TextDecoder().decode(await e.data.arrayBuffer());
+    try {
+      const d = JSON.parse(t);
+      if (d.type === 'ticker')    handleTicker(d);
+      if (d.type === 'orderbook') handleOb(d);
+    } catch(_){}
+  };
+}
+function setConn(live) {
+  document.getElementById('connDot').className = 'dot' + (live ? ' live' : '');
+  document.getElementById('connLbl').textContent = live ? '업비트 연결됨' : '재연결 중...';
+}
+
+/* ════════════════════════════════════════
+   TICKER
+════════════════════════════════════════ */
+function handleTicker(d) {
+  S.prev = S.cur;
+  S.cur  = d.trade_price;
+  updatePriceUI(d);
+  updatePortfolio();
+  if (S.sellBotOn && S.position) checkTrailingStop();
+  // 지정가 예약 체크 (돌파/눌림)
+  if (!S.position && !S.orderPending) {
+    const up   = S.limitOrders.up;
+    const down = S.limitOrders.down;
+    let triggered = null;
+    if (up   && S.cur >= up.price)   triggered = { dir:'up',   order: up   };
+    if (down && S.cur <= down.price) triggered = { dir:'down', order: down };
+    if (triggered) {
+      // 양쪽 모두 취소 후 실행 (하나 체결 → 나머지 자동 취소)
+      S.limitOrders.up   = null;
+      S.limitOrders.down = null;
+      updateBuyBtn();
+      const label = triggered.dir === 'up' ? '돌파 매수' : '눌림 매수';
+      toast(`${label} 실행! ${W(S.cur)}`, 'ok');
+      if (S.isRealMode) buyReal(triggered.order.amt);
+      else              buyMock(S.cur, triggered.order.amt);
+    }
+  }
+}
+
+function updatePriceUI(d) {
+  const el = document.getElementById('pVal');
+  el.textContent = W(d.trade_price);
+  el.style.color = S.prev && S.cur > S.prev ? 'var(--green)'
+                 : S.prev && S.cur < S.prev ? 'var(--red)' : 'var(--text)';
+  setTimeout(() => el.style.color = 'var(--text)', 300);
+
+  document.getElementById('buyPriceDisplay').innerHTML =
+    W(d.trade_price) + ' <small>현재가</small>';
+
+  const chg = d.signed_change_rate * 100;
+  const pc  = document.getElementById('pChg');
+  pc.textContent = (chg>=0?'▲ ':'▼ ')+Math.abs(chg).toFixed(2)+'%';
+  pc.className   = 'p-chg ' + (chg>=0?'up':'dn');
+
+  document.getElementById('mHi').textContent  = W(d.high_price);
+  document.getElementById('mLo').textContent  = W(d.low_price);
+  document.getElementById('mVol').textContent = fK(d.acc_trade_volume_24h)+' '+S.market.split('-')[1];
+  document.getElementById('mQV').textContent  = W(d.acc_trade_price_24h);
+
+  document.getElementById('iCur').textContent = W(d.trade_price);
+}
+
+/* ════════════════════════════════════════
+   ORDERBOOK
+════════════════════════════════════════ */
+function handleOb(d) {
+  const u = d.orderbook_units || [];
+  S.ob.asks = u.map(r => ({ price: r.ask_price, qty: r.ask_size })).reverse();
+  S.ob.bids = u.map(r => ({ price: r.bid_price, qty: r.bid_size }));
+  renderOb();
+}
+function renderOb() {
+  const { asks, bids } = S.ob;
+  if (!asks.length) return;
+  const maxQ = Math.max(...asks.map(r=>r.qty), ...bids.map(r=>r.qty));
+  const spread = asks[asks.length-1].price - bids[0].price;
+  let h = '';
+  asks.forEach(r => {
+    const w = (r.qty/maxQ*100).toFixed(1);
+    h += `<div class="ob-row ask"><div class="ob-bar" style="width:${w}%"></div>
+          <div class="ob-p ask">${W(r.price)}</div><div class="ob-q">${r.qty.toFixed(4)}</div></div>`;
+  });
+  h += `<div class="ob-mid">스프레드 ${W(spread)}</div>`;
+  bids.forEach(r => {
+    const w = (r.qty/maxQ*100).toFixed(1);
+    h += `<div class="ob-row bid"><div class="ob-bar" style="width:${w}%"></div>
+          <div class="ob-p bid">${W(r.price)}</div><div class="ob-q">${r.qty.toFixed(4)}</div></div>`;
+  });
+  document.getElementById('ob').innerHTML = h;
+}
+
+/* ════════════════════════════════════════
+   5분봉 + 지표 (지표 바 표시용)
+════════════════════════════════════════ */
+async function fetchCandles() {
+  try {
+    const res  = await fetch(`https://api.upbit.com/v1/candles/minutes/5?market=${S.market}&count=120`);
+    const data = await res.json();
+    if (!Array.isArray(data)) return;
+    S.candles = data.reverse().map(d => ({
+      c: d.trade_price, h: d.high_price, l: d.low_price, o: d.opening_price,
+    }));
+    updateIndicatorBar();
+  } catch(_) {}
+}
+
+function calcRSI(c, n=14) {
+  if (c.length < n+1) return null;
+  const d = c.slice(-n-1);
+  let g=0, l=0;
+  for (let i=1; i<d.length; i++) { const v=d[i]-d[i-1]; if(v>0) g+=v; else l-=v; }
+  g/=n; l/=n;
+  return l===0 ? 100 : 100 - 100/(1+g/l);
+}
+function calcMA(c, n) {
+  if (c.length < n) return null;
+  return c.slice(-n).reduce((a,b)=>a+b,0)/n;
+}
+
+function updateIndicatorBar() {
+  const cl  = S.candles.map(c=>c.c);
+  const rsi  = calcRSI(cl, 14);
+  const ma20 = calcMA(cl, 20);
+  const ma60 = calcMA(cl, 60);
+
+  const rEl = document.getElementById('iRsi');
+  if (rsi != null) {
+    rEl.textContent = rsi.toFixed(1);
+    rEl.className   = 'ind-val' + (rsi<35?' up':rsi>65?' dn':'');
+  }
+  document.getElementById('iMa20').textContent = ma20 ? W(ma20) : '—';
+  document.getElementById('iMa60').textContent = ma60 ? W(ma60) : '—';
+}
+
+/* ════════════════════════════════════════
+   매도 자동화 (트레일링 스탑)
+════════════════════════════════════════ */
+function checkTrailingStop() {
+  if (!S.position) return;
+  const cur           = S.cur;
+  const sl            = parseFloat(document.getElementById('stopLoss').value)       / 100;
+  const trailActivate = parseFloat(document.getElementById('trailingActivate').value) / 100;
+  const trailWidth    = parseFloat(document.getElementById('trailingWidth').value)   / 100;
+
+  // 고점 갱신
+  if (cur > S.position.highestPrice) S.position.highestPrice = cur;
+
+  const { entryPrice, highestPrice } = S.position;
+  const fromEntry     = (cur - entryPrice)    / entryPrice;
+  const fromPeak      = (cur - highestPrice)  / highestPrice;
+  const peakFromEntry = (highestPrice - entryPrice) / entryPrice; // 고점 기준 수익률
+
+  // 1. 고정 손절
+  if (fromEntry <= -sl) {
+    closePos(cur, `손절 (진입가 -${(sl*100).toFixed(1)}%)`);
+    return;
+  }
+
+  // 2. 조건부 트레일링: 고점이 활성화 기준 이상 도달한 경우에만
+  if (peakFromEntry >= trailActivate && fromPeak <= -trailWidth) {
+    const gainPct = (fromEntry * 100).toFixed(2);
+    closePos(cur, `트레일링스탑 (진입대비 ${parseFloat(gainPct)>=0?'+':''}${gainPct}%)`);
+  }
+}
+
+/* ════════════════════════════════════════
+   매수 실행
+════════════════════════════════════════ */
+function setLimitOrder(dir) {
+  if (S.position) { toast('이미 포지션이 있습니다.', 'warn'); return; }
+  const amt   = parseInt(document.getElementById('buyAmt').value);
+  const inputId = dir === 'up' ? 'limitPriceUp' : 'limitPriceDown';
+  const price = parseInt(document.getElementById(inputId).value);
+  if (!price || price <= 0) { toast('가격을 입력하세요.', 'warn'); return; }
+  if (!amt || amt < 5000)   { toast('최소 매수 금액은 ₩5,000입니다.', 'warn'); return; }
+  if (!S.cur)               { toast('가격 데이터를 기다리는 중입니다.', 'warn'); return; }
+  // 방향 검증
+  if (dir === 'up'   && price <= S.cur) { toast('돌파가는 현재가보다 높아야 합니다.', 'warn'); return; }
+  if (dir === 'down' && price >= S.cur) { toast('눌림가는 현재가보다 낮아야 합니다.', 'warn'); return; }
+  S.limitOrders[dir] = { price, amt };
+  updateBuyBtn();
+  const label = dir === 'up' ? `▲ ${W(price)} 돌파 시 매수` : `▼ ${W(price)} 눌림 시 매수`;
+  toast(`예약 완료: ${label}`, 'ok');
+}
+
+function cancelLimitOrder(dir) {
+  S.limitOrders[dir] = null;
+  updateBuyBtn();
+  toast(`${dir === 'up' ? '돌파' : '눌림'} 예약 취소됨`, 'warn');
+}
+
+async function executeBuy() {
+  if (S.orderPending) return;
+  if (S.position) {
+    toast('이미 포지션이 있습니다. 먼저 매도하세요.', 'warn'); return;
+  }
+  const amt = parseInt(document.getElementById('buyAmt').value);
+  if (!amt || amt < 5000) { toast('최소 매수 금액은 ₩5,000입니다.', 'warn'); return; }
+  if (!S.cur) { toast('가격 데이터를 기다리는 중입니다.', 'warn'); return; }
+
+  const ok = confirm(
+    `${S.market.split('-')[1]} 매수\n금액: ${W(amt)}\n현재가: ${W(S.cur)}\n\n실행하시겠습니까?`
+  );
+  if (!ok) return;
+
+  if (S.isRealMode) {
+    await buyReal(amt);
+  } else {
+    buyMock(S.cur, amt);
+  }
+}
+
+function buyMock(price, krwAmt) {
+  const qty = krwAmt / price;
+  S.krw -= krwAmt;
+  S.position = { qty, entryPrice: price, entryKrw: krwAmt, highestPrice: price };
+  addLog('BUY', price, qty, null, '수동 매수 (모의)');
+  updatePortfolio();
+  updateBuyBtn();
+  toast('모의 매수 완료', 'ok');
+}
+
+async function buyReal(krwAmt) {
+  S.orderPending = true;
+  setBuyBtnLoading(true);
+  try {
+    const res  = await fetch(`${API}/order/buy`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ market: S.market, price: Math.floor(krwAmt) }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      toast('매수 주문 완료!\n잔고 반영까지 2초...', 'ok');
+      await new Promise(r => setTimeout(r, 2000));
+      await syncRealBalance();
+    } else {
+      toast('매수 실패:\n' + JSON.stringify(data.error), 'err');
+    }
+  } catch(e) {
+    toast('서버 오류: ' + e.message, 'err');
+  } finally {
+    S.orderPending = false;
+    setBuyBtnLoading(false);
+  }
+}
+
+/* ════════════════════════════════════════
+   매도 실행
+════════════════════════════════════════ */
+function closePos(price, reason) {
+  if (S.isRealMode) { sellReal(price, reason); return; }
+  // 모의
+  const { qty, entryKrw } = S.position;
+  const pnl = qty * price - entryKrw;
+  S.krw += qty * price;
+  S.realPnl += pnl;
+  S.trades++;
+  addLog('SELL', price, qty, pnl, reason);
+  S.position = null;
+  updatePortfolio();
+  updateBuyBtn();
+  toast(`매도 완료\n${reason}\n손익: ${pnl>=0?'+':''}${W(pnl)}`, pnl>=0?'ok':'warn');
+}
+
+async function sellReal(price, reason) {
+  if (S.orderPending || !S.position) return;
+  S.orderPending = true;
+  try {
+    const { qty, entryKrw } = S.position;
+    const res  = await fetch(`${API}/order/sell`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ market: S.market, volume: qty }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      const pnl = qty * price - entryKrw;
+      S.realPnl += pnl;
+      S.trades++;
+      addLog('SELL', price, qty, pnl, reason);
+      S.position = null;
+      toast(`매도 주문 완료!\n${reason}`, pnl>=0?'ok':'warn');
+      await new Promise(r => setTimeout(r, 2000));
+      await syncRealBalance();
+    } else {
+      toast('매도 실패:\n' + JSON.stringify(data.error), 'err');
+    }
+  } catch(e) {
+    toast('서버 오류: ' + e.message, 'err');
+  } finally {
+    S.orderPending = false;
+    updatePortfolio();
+    updateBuyBtn();
+  }
+}
+
+async function executeManualSell() {
+  if (!S.position) return;
+  const ok = confirm(`${S.market.split('-')[1]} 전량 수동 매도\n수량: ${S.position.qty.toFixed(6)}\n현재가: ${W(S.cur)}\n\n실행하시겠습니까?`);
+  if (!ok) return;
+  closePos(S.cur, '수동 매도');
+}
+
+/* ════════════════════════════════════════
+   포트폴리오 UI
+════════════════════════════════════════ */
+function updatePortfolio() {
+  const cur = S.cur;
+  document.getElementById('pfKrw').textContent = W(S.krw);
+
+  const total = S.krw + (S.position && cur ? S.position.qty * cur : 0);
+  const rate  = (total - S.initKrw) / S.initKrw * 100;
+  const sEl   = document.getElementById('pfStat');
+  sEl.textContent = (S.realPnl>=0?'+':'')+W(S.realPnl)+' / '+fp(rate);
+  sEl.className   = 'pf-v ' + (rate >= 0 ? 'up' : 'dn');
+
+  const trailActivate = parseFloat(document.getElementById('trailingActivate').value) / 100;
+  const trailWidth    = parseFloat(document.getElementById('trailingWidth').value)    / 100;
+
+  if (S.position && cur) {
+    const { qty, entryPrice, entryKrw, highestPrice } = S.position;
+    const trailStopPrice  = highestPrice * (1 - trailWidth);
+    const peakFromEntry   = (highestPrice - entryPrice) / entryPrice;
+    const trailActive     = peakFromEntry >= trailActivate;
+    const unreal          = qty * cur - entryKrw;
+
+    document.getElementById('pfPos').textContent   = qty.toFixed(6) + ' ' + S.market.split('-')[1];
+    document.getElementById('pfEntry').textContent = W(entryPrice);
+    document.getElementById('pfPeak').textContent  = W(highestPrice);
+    document.getElementById('pfStop').textContent  = trailActive
+      ? W(trailStopPrice) + ` (-${(trailWidth*100).toFixed(0)}%)`
+      : `대기 중 (+${(trailActivate*100).toFixed(0)}% 시 활성)`;
+    document.getElementById('pfStop').className = 'pf-v ' + (trailActive ? 'warn' : '');
+
+    const uEl = document.getElementById('pfUnreal');
+    uEl.textContent = (unreal>=0?'+':'')+W(unreal)+` (${fp((unreal/entryKrw)*100)})`;
+    uEl.className   = 'pf-v ' + (unreal>=0?'up':'dn');
+
+    // 지표 바
+    document.getElementById('iPeak').textContent = W(highestPrice);
+    document.getElementById('iStop').textContent = trailActive ? W(trailStopPrice) : '—';
+
+    // 손절 바 (매수가 기준 손절까지 남은 거리, 그라디언트는 CSS에서 처리)
+    const sl        = parseFloat(document.getElementById('stopLoss').value) / 100;
+    const fromEntry = (cur - entryPrice) / entryPrice;
+    const pct       = Math.max(0, Math.min(100, (1 + fromEntry / sl) * 100));
+    document.getElementById('trailBarFill').style.width = pct + '%';
+    document.getElementById('trailBarPct').textContent  = `현재 ${(fromEntry*100).toFixed(1)}%`;
+    document.getElementById('trailBarStop').textContent = `-${(sl*100).toFixed(1)}%`;
+    document.getElementById('trailBarPeak').textContent = '매수가';
+    document.getElementById('trailBarWrap').style.display = '';
+  } else {
+    ['pfPos','pfEntry','pfPeak','pfStop','pfUnreal'].forEach(id => {
+      document.getElementById(id).textContent = '—';
+      document.getElementById(id).className   = 'pf-v';
+    });
+    document.getElementById('iPeak').textContent = '—';
+    document.getElementById('iStop').textContent = '—';
+    document.getElementById('trailBarWrap').style.display = 'none';
+  }
+}
+
+function updateBuyBtn() {
+  const hasPosn = !!S.position;
+  const hasUp   = !!S.limitOrders.up;
+  const hasDn   = !!S.limitOrders.down;
+  // 포지션 보유 시 매수 영역 전체 숨김
+  document.getElementById('buyAmtGroup').style.display = hasPosn ? 'none' : '';
+  document.getElementById('sellBtn').style.display     = hasPosn ? ''     : 'none';
+  if (hasPosn) return;
+  // 돌파 행 토글
+  document.getElementById('lmtInputUp').style.display  = hasUp ? 'none' : '';
+  document.getElementById('lmtWaitUp').style.display   = hasUp ? ''     : 'none';
+  if (hasUp) document.getElementById('lmtLabelUp').textContent =
+    `▲ ${W(S.limitOrders.up.price)} 돌파 시 매수`;
+  // 눌림 행 토글
+  document.getElementById('lmtInputDown').style.display = hasDn ? 'none' : '';
+  document.getElementById('lmtWaitDown').style.display  = hasDn ? ''     : 'none';
+  if (hasDn) document.getElementById('lmtLabelDown').textContent =
+    `▼ ${W(S.limitOrders.down.price)} 눌림 시 매수`;
+}
+
+function setBuyBtnLoading(on) {
+  const btn = document.getElementById('buyBtn');
+  btn.disabled     = on;
+  btn.innerHTML    = on ? '<span class="spin"></span> 처리 중...' : '매수';
+}
+
+/* ════════════════════════════════════════
+   매도봇 ON/OFF
+════════════════════════════════════════ */
+function toggleSellBot() {
+  S.sellBotOn = !S.sellBotOn;
+  const btn = document.getElementById('sellBotBtn');
+  const tag = document.getElementById('botTag');
+  btn.className   = 'sell-bot-btn' + (S.sellBotOn ? ' on' : '');
+  document.getElementById('sbbStatus').textContent = S.sellBotOn ? '감시 중' : '꺼짐';
+  document.getElementById('sbbAction').textContent = S.sellBotOn ? '■ 정지하기' : '▶ 자동화 시작';
+  tag.textContent = S.sellBotOn ? '매도봇 ON' : '매도봇 OFF';
+  tag.className   = 'bot-tag' + (S.sellBotOn ? ' on' : '');
+  if (S.sellBotOn) toast('매도봇 가동 — 트레일링 스탑 감시 중', 'ok');
+  else             toast('매도봇 정지', 'warn');
+}
+
+/* ════════════════════════════════════════
+   실거래 모드
+════════════════════════════════════════ */
+async function checkServer() {
+  try {
+    const res  = await fetch(`${API}/status`, { signal: AbortSignal.timeout(2000) });
+    const d    = await res.json();
+    S.serverOk = d.ok && d.configured;
+    document.getElementById('serverDot').className = 'dot ' + (S.serverOk ? 'ok' : 'err');
+    document.getElementById('serverLbl').textContent = S.serverOk ? '서버 연결됨' : '키 미설정';
+    document.getElementById('serverLbl').style.color = S.serverOk ? 'var(--green)' : 'var(--yellow)';
+  } catch {
+    S.serverOk = false;
+    document.getElementById('serverDot').className = 'dot err';
+    document.getElementById('serverLbl').textContent = '서버 없음';
+    document.getElementById('serverLbl').style.color = 'var(--text3)';
+    if (S.isRealMode) {
+      S.isRealMode = false;
+      document.getElementById('realToggle').checked = false;
+      updateModeBadge();
+      toast('서버 연결 끊김 — 모의 모드로 전환', 'warn');
+    }
+  }
+}
+
+async function toggleRealMode(on) {
+  if (on && !S.serverOk) {
+    document.getElementById('realToggle').checked = false;
+    toast('server.py 가 실행 중이어야 합니다.', 'warn'); return;
+  }
+  if (on) {
+    const ok = confirm('실거래 모드: 실제 업비트 계좌에서 주문이 집행됩니다.\n계속하시겠습니까?');
+    if (!ok) { document.getElementById('realToggle').checked = false; return; }
+  }
+  S.isRealMode = on;
+  updateModeBadge();
+  document.getElementById('syncBtn').style.display = on ? '' : 'none';
+  if (on) {
+    await syncRealBalance();
+    toast('실거래 모드 활성화\n실계좌 잔고를 불러왔습니다.', 'ok');
+  } else {
+    S.krw = 10_000_000; S.initKrw = 10_000_000; S.position = null;
+    updatePortfolio(); updateBuyBtn();
+  }
+}
+
+function updateModeBadge() {
+  const b = document.getElementById('modeBadge');
+  b.textContent = S.isRealMode ? '실거래' : '모의';
+  b.className   = 'badge ' + (S.isRealMode ? 'real' : 'sim');
+}
+
+async function syncRealBalance() {
+  const coin = S.market.split('-')[1];
+  try {
+    const res  = await fetch(`${API}/balance/${coin}`);
+    const data = await res.json();
+    if (!data.ok) { toast('잔고 조회 실패', 'err'); return; }
+    S.krw = data.krw;
+    if (data.coin > 0.000001) {
+      if (!S.position) {
+        S.position = { qty: data.coin, entryPrice: S.cur, entryKrw: data.coin * S.cur, highestPrice: S.cur };
+        toast(`보유 ${coin}: ${data.coin.toFixed(6)}\n현재가를 진입가로 설정했습니다.\n실제 진입가를 확인 후 조정하세요.`, 'warn');
+      } else {
+        S.position.qty = data.coin;
+      }
+    } else {
+      S.position = null;
+    }
+    S.initKrw = S.krw + (S.position ? S.position.qty * S.cur : 0);
+    updatePortfolio(); updateBuyBtn();
+  } catch(e) { toast('잔고 조회 오류: ' + e.message, 'err'); }
+}
+
+/* ════════════════════════════════════════
+   LOG
+════════════════════════════════════════ */
+function addLog(side, price, qty, pnl, note) {
+  const body = document.getElementById('logBody');
+  const ph   = body.querySelector('.log-ph');
+  if (ph) ph.remove();
+  const now  = new Date().toLocaleString('ko-KR', { hour12:false, month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  const pnlT = pnl == null ? '—' : (pnl>=0?'+':'')+W(pnl);
+  const pnlC = pnl == null ? 'n' : pnl>=0 ? 'p' : 'l';
+  const row  = document.createElement('div');
+  row.className = 'log-row';
+  row.innerHTML = `
+    <span class="log-time">${now.replace(/\. /g,'/').replace('.',':')}</span>
+    <span class="log-side ${side[0]}">${side}</span>
+    <span class="log-coin">${S.market.split('-')[1]}</span>
+    <span class="log-price">${W(price)}</span>
+    <span class="log-qty">${qty.toFixed(6)}</span>
+    <span class="log-pnl ${pnlC}">${pnlT}</span>
+    <span class="log-note">${note||''}</span>
+  `;
+  body.insertBefore(row, body.firstChild);
+}
+function clearLog() {
+  document.getElementById('logBody').innerHTML = '<div class="log-ph">로그가 비워졌습니다.</div>';
+}
+
+/* ════════════════════════════════════════
+   UI HELPERS
+════════════════════════════════════════ */
+function updateRuleBox() {
+  const sl  = document.getElementById('stopLoss').value;
+  const ta  = document.getElementById('trailingActivate').value;
+  const tw  = document.getElementById('trailingWidth').value;
+  document.getElementById('rSL').textContent  = sl;
+  document.getElementById('rTA').textContent  = ta;
+  document.getElementById('rTA2').textContent = ta;
+  document.getElementById('rTW').textContent  = tw;
+}
+
+function toast(msg, type='ok') {
+  const colors = { ok:'var(--green)', warn:'var(--yellow)', err:'var(--red)' };
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.style.borderLeft = `3px solid ${colors[type]||'var(--border)'}`;
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.style.opacity='0', 4500);
+  setTimeout(() => el.remove(), 5000);
+}
+
+/* ════════════════════════════════════════
+   COIN SELECT
+════════════════════════════════════════ */
+function selectCoin(market, name, btn) {
+  S.market   = market;
+  S.coinName = name;
+  S.cur = 0; S.prev = 0;
+  document.getElementById('pSym').textContent = market + ' · ' + name;
+  document.getElementById('pVal').textContent = '—';
+  document.querySelectorAll('.ctab').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  connect(market);
+  initTV(market);
+  clearInterval(S.fetchTimer);
+  fetchCandles();
+  S.fetchTimer = setInterval(fetchCandles, 5 * 60 * 1000);
+}
+
+/* ════════════════════════════════════════
+   INIT
+════════════════════════════════════════ */
+connect(S.market);
+initTV(S.market);
+fetchCandles();
+S.fetchTimer = setInterval(fetchCandles, 5 * 60 * 1000);
+checkServer();
+setInterval(checkServer, 10_000);
+updateRuleBox();
+</script>
+</body>
+</html>
